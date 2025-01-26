@@ -392,7 +392,7 @@ class WebSocketServer:
     async def handle_client(self, websocket, path=None):
         try:
             async for message in websocket:
-                #print(f"Received message: {message}")
+                print(f"Received message: {message}")
                 await websocket.send("Frame received")
         except Exception as e:
             print(f"WebSocket server error: {e}")
