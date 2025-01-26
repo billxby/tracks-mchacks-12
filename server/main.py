@@ -4,6 +4,7 @@ import time
 import spotipy
 from collections import defaultdict
 from functools import reduce
+from gumloop import GumloopClient
 import math
 import asyncio
 import websockets
@@ -24,6 +25,16 @@ has_genre = False
             DEFINITIONS
 ======================================
 '''
+
+
+
+genre = ""
+
+# Initialize the client
+client = GumloopClient(
+    api_key=os.environ["GUMLOOP_APIKEY"],
+    user_id="U6GxwtGhTlgau57eeYFcIbLigSk2"
+)
 
 return_values = {
   "Pop": [
@@ -181,6 +192,7 @@ def getSongId(track_name, artist):
 
 def processValues():
     global return_values
+    
     print(genres)
     if not genres:  # Check if genres is empty
         print("No genres provided.", type(genres))
@@ -190,11 +202,15 @@ def processValues():
     local_songs = []
     print(return_values)
     
-    for genre in return_values:
-        print(genre)
-        if genre in json.loads(genres[0]):
-            for ssong in return_values[genre]:
-                local_songs.append(ssong)
+    for genre in json.loads(genres[0]):
+        genres = client.run_flow(
+            flow_id="xtr612RYGxu7XWNGaxDtwF",
+            inputs={
+                "genre": genre
+            }
+        )
+        for ssong in return_values[genre]:
+            local_songs.append(ssong)
     print(local_songs, 'penis!')
             
     
