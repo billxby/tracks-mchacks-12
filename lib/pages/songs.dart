@@ -47,7 +47,7 @@ class _SongsPageState extends ConsumerState<SongsPage> {
             Text("Choose your genre", style: Theme.of(context).textTheme.headlineMedium?.copyWith(fontWeight: FontWeight.w600)),
             Row(mainAxisAlignment: MainAxisAlignment.center, children: [Image.network("https://blog.boostcollective.ca/hs-fs/hubfs/Spotify%20Black%20Logo%20PNG.png?width=400&name=Spotify%20Black%20Logo%20PNG.png", scale: 30,), SizedBox(width: 5), Text("Spotify connected ✅"),],),
             Padding(
-              padding: const EdgeInsets.only(top: 30, bottom: 80, right: 60, left: 60),
+              padding: const EdgeInsets.only(top: 30, bottom: 80, right: 250, left: 250),
               child: Wrap(
                 alignment: WrapAlignment.center,
                 children: List.generate(Genres.length, (index) {
@@ -55,7 +55,7 @@ class _SongsPageState extends ConsumerState<SongsPage> {
                   final isSelected = chosenGenres.contains(genre);
 
                   return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 5),
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 5),
                     child: ElevatedButton(
                         style: ElevatedButton.styleFrom(
                           backgroundColor: isSelected ? HighlightColor : Colors.white, elevation: 1,

@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
+import 'package:camera_web/camera_web.dart';
 import 'package:convert_native_img_stream/convert_native_img_stream.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -12,7 +13,7 @@ import 'package:gal/gal.dart';
 import 'package:image/image.dart' as imglib;
 import 'package:image/image.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:web_socket_channel/io.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
 
 
 import '../utils/functions.dart';
@@ -34,12 +35,16 @@ class _RecordPageState extends ConsumerState<RecordPage> with WidgetsBindingObse
   CameraController? cameraController;
   late Timer videoFeedTimer;
   bool isStreaming = false;
-  final videoChannel = IOWebSocketChannel.connect('ws://192.197.121.91:59548');
+  final videoChannel = WebSocketChannel.connect(
+    Uri.parse('ws://10.217.23.251:8765'),
+  );
+
+  // final videoChannel = IOWebSocketChannel.connect('ws://10.217.23.251:8765');
 
 
   void checkConnection() {
     try {
-      videoChannel.sink.add('ping'); // Try sending a ping message
+      // videoChannel.sink.add('ping'); // Try sending a ping message
       print('WebSocket is connected.');
     } catch (e) {
       print('WebSocket is not connected: $e');
@@ -61,6 +66,7 @@ class _RecordPageState extends ConsumerState<RecordPage> with WidgetsBindingObse
   void initState() {
     super.initState();
     _setupCameraController();
+
     // videoFeedTimer = Timer.periodic(Duration(milliseconds: 42 /*Approx 24 fps*/), (timer) async {
     //   print("kuan is gay");
     //   XFile picture = await cameraController!.takePicture();
@@ -70,11 +76,12 @@ class _RecordPageState extends ConsumerState<RecordPage> with WidgetsBindingObse
     // });
   }
 
+
   @override
   void dispose() {
     super.dispose();
     // videoFeedTimer.cancel();
-    cameraController?.stopImageStream();
+    // cameraController?.stopImageStream();
     // print("stream stopped");
     cameraController?.dispose();
   }
@@ -89,74 +96,20 @@ class _RecordPageState extends ConsumerState<RecordPage> with WidgetsBindingObse
     if (_cameras.isNotEmpty) {
       setState(() {
         cameras = _cameras;
-        final selectedCamera = cameras.firstWhere((camera) => camera.lensDirection == CameraLensDirection.front);
+        final selectedCamera = cameras.first; //.firstWhere((camera) => camera.lensDirection == CameraLensDirection.front);
         print(_cameras);
-        cameraController = CameraController(selectedCamera, ResolutionPreset.medium, enableAudio: false, videoBitrate: 20);
+        cameraController = CameraController(selectedCamera, ResolutionPreset.low, enableAudio: false, videoBitrate: 20);
       });
-      final Directory directory = await getApplicationDocumentsDirectory();
       cameraController?.initialize().then((_) {
-        cameraController?.setFlashMode(FlashMode.off);
-        // _startVideoStream();
-        setState(() {});
-
-
-        // return;
-        cameraController?.startImageStream((CameraImage availableImage) async {
-          // print(counter);
-          counter++;
-          // print(availableImage.format.group.name);
-          // imglib.Image? bitmap = imglib.decodeImage(availableImage.planes[0].bytes);
-          // final bitmap = imglib.Image.fromBytes(
-          //   height: availableImage.height,
-          //   width: availableImage.width,
-          //   bytes: (availableImage.planes[0].bytes).buffer,
-          //   format: imglib.Format.uint8,
-          //   order: ChannelOrder.bgra
-          // );
-          final encodedString = base64Encode(availableImage.planes[0].bytes);
-          // print(encodedString);
-          videoChannel.sink.add(encodedString);
-          // if (bitmap != null) {
-          //   File("${directory.path}/img.png").writeAsBytesSync(imglib.encodeJpg(bitmap));
-          //   // Gal.putImage("${directory.path}/img.png");
-          // } else {
-          //   print("bitmap is null");
-          // }
+        setState(() {
+          videoChannel.sink.add(jsonEncode(ref.read(ChosenSongGenresProvider).toList()));
         });
-
       });
     }
   }
 
   int counter = 0;
 
-  Future<void> _startVideoStream() async {
-    isStreaming = true;
-
-    while (isStreaming) {
-      // Capture a frame from the camera
-      // print("hi");
-      final XFile? file = await cameraController?.takePicture();
-
-      print(counter);
-      // if (file != null) {
-      //   Gal.putImage(file.path);
-      // }
-      if (file != null) {
-        final Uint8List frameBytes = await file.readAsBytes();
-      }
-      // print(file);
-      counter++;
-
-      // final Uint8List frameBytes = await file.readAsBytes();
-
-      // Send the frame over WebSocket
-      // _channel.sink.add(frameBytes); // Send raw bytes (or encoded bytes)
-
-      // Delay to simulate frame rate (e.g., 30fps)
-      // await Future.delayed(Duration(milliseconds: 33)); // 30 fps
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -187,51 +140,110 @@ class _RecordPageState extends ConsumerState<RecordPage> with WidgetsBindingObse
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.only(left: 20, right: 20, top: 50, bottom: 50),
+              padding: const EdgeInsets.only(left: 400, right: 400, top: 0, bottom: 0),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(20),
                 child: CameraPreview(cameraController!),
               ),
             ),
-            StreamBuilder(
-              stream: videoChannel.stream,
-              builder: (context, snapshot) {
-                print("hello world");
-                print(videoChannel.closeReason);
-                checkConnection();
-                return Center(
-                  child: Text(snapshot.hasData ? '${snapshot.data}' : 'Nada', style: TextStyle(color: Colors.white)),
-                );
-              },
-            ),
+            // Padding(
+            //   padding: EdgeInsets.symmetric(horizontal: 400),
+            //   child: SizedBox(
+            //       height: 70,
+            //       child: Row(
+            //         children: [
+            //           Expanded(child: Column(
+            //             crossAxisAlignment: CrossAxisAlignment.center,
+            //             children: [
+            //               Text("Bicep Curl", style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold)),
+            //               Text("Current Exercise", style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white))
+            //             ],
+            //           )),
+            //           Container(color: Colors.white, width: 2),
+            //           Expanded(child: Column(
+            //             crossAxisAlignment: CrossAxisAlignment.center,
+            //             children: [
+            //               Text("120", style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold)),
+            //               Text("Pace", style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white))
+            //             ],
+            //           ))
+            //         ],
+            //       )
+            //   )
+            // ),
+            // StreamBuilder(
+            //   stream: videoChannel.stream,
+            //   builder: (context, snapshot) {
+            //     return Text(snapshot.hasData ? '${snapshot.data}' : '');
+            //   },
+            // ),
+            // TextButton(
+            //   child: Text("Fuck your shit"),
+            //   onPressed: () {
+            //     videoChannel.sink.add('{"exercise":"bicep curl", "bpm":"69"}');
+            //   },
+            // ),
+            Padding(
+                padding: EdgeInsets.symmetric(horizontal: 400),
+                child: StreamBuilder(
+                  stream: videoChannel.stream,
+                  builder: (context, snapshot) {
+                    print("hello world");
+                    print(snapshot.data);
+                    // checkConnection();
+
+                    if (!snapshot.hasData) {
+                      return Text("Setting Up...", style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white));
+                    }
+
+                    try {
+                      print("hi");
+                      final values = jsonDecode(snapshot.data);
+                      print(values);
+                      final String exercise = values['exercise'];
+                      final String bpm = values['bpm'];
+
+                      print(exercise);
+                      print(bpm);
+
+                      return SizedBox(
+                          height: 70,
+                          child: Row(
+                            children: [
+                              Expanded(child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Text(exercise, /*"Bicep Curl",*/ style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold)),
+                                  Text("Current Exercise", style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white))
+                                ],
+                              )),
+                              Container(color: Colors.white, width: 2),
+                              Expanded(child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Text(bpm, /*"120",*/ style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold)),
+                                  Text("Pace", style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white))
+                                ],
+                              ))
+                            ],
+                          )
+                      );
+                    } catch (e) {
+                      return Text("Waiting for Results", style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white));
+                    }
+
+                    return Center(
+                      child: Text(snapshot.hasData ? '${snapshot.data}' : 'Nada', style: TextStyle(color: Colors.white)),
+                    );
+                  },
+                ),
+            )
             // ElevatedButton(
             //   child: Text("erm"),
             //   onPressed: () {
             //     videoChannel.sink.add("Hello world");
             //   }
             // )
-            SizedBox(
-              height: 70,
-              child: Row(
-                children: [
-                  Expanded(child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Text("Bicep Curl", style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold)),
-                      Text("Current Exercise", style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white))
-                    ],
-                  )),
-                  Container(color: Colors.white, width: 2),
-                  Expanded(child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Text("120", style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold)),
-                      Text("Pace", style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white))
-                    ],
-                  ))
-                ],
-              )
-            )
           ]
         ),
       )
