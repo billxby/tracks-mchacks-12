@@ -7,7 +7,7 @@ import math
 import asyncio
 import random
 import os
-from .websocket import Websocket
+from .websocket import WebSocket
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -143,7 +143,7 @@ class HandChronometer:
             'min_y': float('inf')
         }
         self.chronometer = Chronometer(self)
-        self.ws = Websocket()
+        self.ws = WebSocket()
 
         #mid-set related variables
         self.bpm_ranges = []
@@ -330,7 +330,7 @@ class HandChronometer:
 
 def main():
     hand_chrono = HandChronometer()
-    ws = Websocket()
+    ws = WebSocket()
     asyncio.run(ws.start_server())
     asyncio.create_task(hand_chrono.run()) # run this concurrently
 

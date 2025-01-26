@@ -3,14 +3,13 @@ import cv2
 import numpy as np
 
 
-class Websocket:
+class WebSocket:
     def __init__(self):
         self.IP = ("localhost", 1235)
         pass
 
     async def get_frames(self, websocket):
         while True:
-            """This needs to be put in a while True loop.s"""
             message = await websocket.recv()
             try:
                 img_np = np.fromstring(message.decode('base64'), np.uint8)
