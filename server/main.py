@@ -1,7 +1,18 @@
 import cv2
 import mediapipe as mp
 import time
+import spotipy
 from collections import defaultdict
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+SPOTIPY_CLIENT_ID = os.getenv("SPOTIPY_CLIENT_ID")
+SPOTIPY_CLIENT_SECRET = os.getenv("SPOTIPY_CLIENT_SECRET")
+SPOTIPY_REDIRECT_URI = os.getenv("SPOTIPY_REDIRECT_URI")
+
+print(SPOTIPY_CLIENT_ID)
 
 FACE_WIDTH = 12
 TEST_WINDOW_TIME = 2
@@ -122,7 +133,7 @@ class HandChronometer:
             self.last_action_time = current_time
 
     def run(self):
-        cap = cv2.VideoCapture(1)
+        cap = cv2.VideoCapture(0) # cv2.VideoCapture(1)
         original_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         original_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
         aspect_ratio = original_width / original_height
