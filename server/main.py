@@ -239,7 +239,7 @@ class HandChronometer:
         new_width = int(new_height * aspect_ratio)
 
         current_frame = 0
-        while cap.isOpened():
+        for frame in self.ws.get_frames():
             current_frame += 1
             this_exercise = self.exercise_list[self.this_exercise_index]
 
@@ -369,11 +369,10 @@ def main():
     global global_songs_list
     print(global_songs_list, 'penis')
     hand_chrono = HandChronometer()
+    ws = WebSocket()
+    asyncio.get_event_loop().create_task(ws.start_server())
     hand_chrono.run()
-    # ws = WebSocket()
-    # asyncio.get_event_loop().create_task(ws.start_server())
-    # asyncio.get_event_loop().create_task(hand_chrono.run()) # run this concurrently
-    # asyncio.get_event_loop().run_forever()
+    asyncio.get_event_loop().run_forever()
 
 if __name__ == "__main__":
     main()

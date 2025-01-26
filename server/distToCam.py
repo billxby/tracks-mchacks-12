@@ -1,17 +1,12 @@
-
-
-
-
-# install opencv "pip install opencv-python" 
 import cv2 
   
 # distance from camera to object(face) measured 
 # centimeter 
-Known_distance = 62
+KNOWN_DISTANCE = 62
   
 # width of face in the real world or Object Plane 
 # centimeter 
-Known_width = 200
+KNOWN_WIDTH = 200
   
 # Colors 
 GREEN = (0, 255, 0) 
@@ -75,10 +70,10 @@ ref_image_face_width = face_data(ref_image)
 # face width in reference(pixels), 
 # Known_distance(centimeters), 
 # known_width(centimeters) 
-Focal_length_found = Focal_Length_Finder( 
-    Known_distance, Known_width, ref_image_face_width) 
+focal_length = Focal_Length_Finder( 
+    KNOWN_DISTANCE, KNOWN_WIDTH, ref_image_face_width) 
   
-print(Focal_length_found) 
+print(focal_length) 
   
 # show the reference image 
 cv2.imshow("ref_image", ref_image) 
@@ -107,8 +102,8 @@ while True:
         # these arguments the Focal_Length, 
         # Known_width(centimeters), 
         # and Known_distance(centimeters) 
-        Distance = Distance_finder( 
-            Focal_length_found, Known_width, face_width_in_frame) 
+        distance = Distance_finder( 
+            focal_length, KNOWN_WIDTH, face_width_in_frame) 
   
         # draw line as background of text 
         cv2.line(frame, (30, 30), (230, 30), RED, 32) 
@@ -116,7 +111,7 @@ while True:
   
         # Drawing Text on the screen 
         cv2.putText( 
-            frame, f"Distance: {round(Distance,2)} CM", (30, 35),  
+            frame, f"Distance: {round(distance,2)} CM", (30, 35),  
           fonts, 0.6, GREEN, 2) 
   
     # show the frame on the screen 
