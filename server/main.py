@@ -7,7 +7,8 @@ import math
 import asyncio
 import random
 import os
-#from websocket import WebSocket
+
+from websocket import WebSocket
 
 from dotenv import load_dotenv
 load_dotenv()
@@ -78,7 +79,6 @@ def processValues(return_values):
     return sorted(songs_list, key=lambda x: x[0])
 
 def getClosestBPM(target_bpm):
-    
     closest_song = min(global_songs_list, key=lambda x: abs(x[0] - target_bpm))
     return closest_song
 
@@ -163,7 +163,7 @@ class HandChronometer:
             'min_y': float('inf')
         }
         self.chronometer = Chronometer(self)
-        #self.ws = WebSocket()
+        self.ws = WebSocket()
 
         #mid-set related variables
         self.bpm_ranges = []
@@ -229,7 +229,7 @@ class HandChronometer:
             self.this_exercise_index = (self.this_exercise_index + 1) % len(self.exercise_list)
             self.last_action_time = current_time
 
-    def run(self):
+    async def run(self):
         cap = cv2.VideoCapture(1)
         original_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         original_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -239,14 +239,17 @@ class HandChronometer:
         new_width = int(new_height * aspect_ratio)
 
         current_frame = 0
-        for frame in self.ws.get_frames():
+        print("BALLS")
+        async for frame in self.ws.get_frames():
             current_frame += 1
             this_exercise = self.exercise_list[self.this_exercise_index]
 
-            ret, frame = cap.read()
-            if not ret:
-                break
-            
+            # ret, frame = cap.read()
+            # if not ret:
+            #     break
+            print("got frame")
+            self.ws.send(69)
+
             frame = cv2.flip(frame, 1)
             h, w, _ = frame.shape
             current_time = time.time()
@@ -365,15 +368,13 @@ class HandChronometer:
 
 global_songs_list = processValues(return_values)
 
-def main():
+async def main():
     global global_songs_list
     print(global_songs_list, 'penis')
     hand_chrono = HandChronometer()
-    ws = WebSocket()
-    asyncio.get_event_loop().create_task(ws.start_server())
-    hand_chrono.run()
-    asyncio.get_event_loop().run_forever()
+    await WebSocket().start_server()
+    await hand_chrono.run()
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
 

@@ -2,32 +2,37 @@ from websockets.asyncio.server import serve
 import cv2
 import numpy as np
 import asyncio
-
+import time
+import websockets
 
 class WebSocket:
     def __init__(self):
-        self.IP = ("localhost", "1235")
+        self.IP = ("localhost", 59548)
         self.ws = None
 
-    def get_frames(self):
+    async def get_frames(self):
         while True:
-            message = asyncio.run(self.ws.recv())
+            if self.ws is None:
+                time.sleep(0.1)  # Wait for the WebSocket connection
+                continue
+
             try:
-                img_np = np.fromstring(message.decode('base64'), np.uint8)
-            except:
-                print("Did not receive image from frontend")
-                continue;
+                message = await self.ws.recv()  # Use await to receive messages asynchronously
+                print("got msg", message)
+                img_np = np.frombuffer(message.encode('utf-8'), np.uint8)  # Adjusted decoding method
+            except Exception as e:
+                print(f"Error while receiving frame: {e}")
+                continue
             frame = cv2.imdecode(img_np, cv2.IMREAD_ANYCOLOR)
-            
             yield frame
-            
+
     def set_ws(self, websocket):
         self.ws = websocket
+        print("WebSocket connection established.")
 
     async def start_server(self):
-        def set_ws(websocket):
-            nonlocal self
-            self.ws = websocket
-        async with serve(set_ws, *self.IP) as server:
-            print("WebSocket hosting at ws://" + ":".join(self.IP))
-            await server.serve_forever()  # Keep running indefinitely
+        print("Starting WebSocket server...")
+        async with websockets.serve(self.set_ws, *self.IP) as server:
+            print("WebSocket hosting at ws://" + ":".join(map(str, self.IP)))
+            await server.serve_forever()  # Keeps the server running indefinitely
+
