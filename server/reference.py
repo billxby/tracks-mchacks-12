@@ -8,6 +8,9 @@ mp_pose = mp.solutions.pose
 pose = mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5)
 mp_drawing = mp.solutions.drawing_utils
 
+FACE_WIDTH = 12
+min_pos = float('inf')
+max_pos = float('-inf')
 # Initialize variables
 prev_wrist_y = None
 curl_velocities = []
@@ -72,6 +75,25 @@ while cap.isOpened():
         wrist = landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value]
         shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value]
         
+        right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value]
+        left_shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value]
+        
+        right_shoulder_x, right_shoulder_y = right_shoulder.x * new_width, right_shoulder.y * new_height
+        left_shoulder_x, left_shoulder_y = left_shoulder.x * new_width, left_shoulder.y * new_height
+        
+        right_ear = landmarks[mp_pose.PoseLandmark.RIGHT_EAR.value]
+        left_ear = landmarks[mp_pose.PoseLandmark.LEFT_EAR.value]
+
+        right_ear_x, right_ear_y = right_ear.x * new_width, right_ear.y * new_height
+        left_ear_x, left_ear_y = left_ear.x * new_width, left_ear.y * new_height
+        
+        propConstant = FACE_WIDTH / (((right_ear_y - left_ear_y) ** 2 + (right_ear_x - left_ear_x) ** 2) ** 0.5)
+        min_pos = min(min_pos, right_shoulder_y * propConstant)
+        max_pos = max(max_pos, right_shoulder_y * propConstant)
+
+        print(min_pos, max_pos)
+        
+        shoulder_width = (((right_shoulder_y - left_shoulder_y) ** 2 + (right_shoulder_x - left_shoulder_x) ** 2) ** 0.5)
         # Calculate wrist position relative to shoulder
         wrist_y = (shoulder.y - wrist.y) * frame.shape[0]
         
@@ -94,6 +116,13 @@ while cap.isOpened():
             velocity_text = f"Curl Speed: {smoothed_velocity:.1f} pixels/sec"
             cv2.putText(frame, velocity_text, (int(30 * font_scale), int(50 * font_scale)), 
                        cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 0), thickness)
+            
+            cv2.putText(frame, str(propConstant), (int(30 * font_scale), int(250 * font_scale)), 
+                       cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 0), thickness)
+            
+            cv2.putText(frame, str(propConstant * shoulder_width), (int(30 * font_scale), int(300 * font_scale)), 
+                       cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 0), thickness)
+        
             
             # Display percentage of max speed
             if max_velocity > 0:
