@@ -4,10 +4,12 @@ import time
 import spotipy
 from collections import defaultdict
 import math
-from dotenv import load_dotenv
+import asyncio
 import random
 import os
+from .websocket import Websocket
 
+from dotenv import load_dotenv
 load_dotenv()
 
 '''
@@ -133,7 +135,7 @@ class HandChronometer:
         self.this_exercise_index = 0
         self.start_frame = 0
         self.stop_frame = 0
-        
+
         self.extrema_tracking = {
             'active': False,
             'elapsed_time': 0,
@@ -141,20 +143,18 @@ class HandChronometer:
             'min_y': float('inf')
         }
         self.chronometer = Chronometer(self)
-        
+        self.ws = Websocket()
+
         #mid-set related variables
         self.bpm_ranges = []
         self.normalAction = False
         self.prev_max_time = 0
         self.BPM_class = 4
         
-        
-        
 
     def split_into_ranges(self, n):
         step = math.ceil(n / 4)
         return [(i * step + 1, min((i + 1) * step, n)) for i in range(5)]
-
 
     def fingers_up(self, hand_landmarks, handedness):
         tips = [4, 8, 12, 16, 20]
@@ -209,7 +209,7 @@ class HandChronometer:
             self.this_exercise_index = (self.this_exercise_index + 1) % len(self.exercise_list)
             self.last_action_time = current_time
 
-    def run(self):
+    async def run(self):
         cap = cv2.VideoCapture(1)
         original_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         original_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -219,12 +219,7 @@ class HandChronometer:
         new_width = int(new_height * aspect_ratio)
 
         current_frame = 0
-        while cap.isOpened():
-            current_frame += 1
-            ret, frame = cap.read()
-            if not ret:
-                break
-            
+        async for frame in self.ws.get_frames():
             this_exercise = self.exercise_list[self.this_exercise_index]
 
             frame = cv2.flip(frame, 1)
@@ -335,7 +330,9 @@ class HandChronometer:
 
 def main():
     hand_chrono = HandChronometer()
-    hand_chrono.run()
+    ws = Websocket()
+    asyncio.run(ws.start_server())
+    asyncio.create_task(hand_chrono.run()) # run this concurrently
 
 if __name__ == "__main__":
     main()
