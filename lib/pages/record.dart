@@ -26,13 +26,25 @@ class RecordPage extends ConsumerStatefulWidget {
   ConsumerState<RecordPage> createState() => _RecordPageState();
 }
 
+
+
 class _RecordPageState extends ConsumerState<RecordPage> with WidgetsBindingObserver {
   final convertNative = ConvertNativeImgStream();
   List<CameraDescription> cameras = [];
   CameraController? cameraController;
   late Timer videoFeedTimer;
   bool isStreaming = false;
-  final videoChannel = IOWebSocketChannel.connect('ws://echo.websocket.org');
+  final videoChannel = IOWebSocketChannel.connect('ws://192.197.121.91:59548');
+
+
+  void checkConnection() {
+    try {
+      videoChannel.sink.add('ping'); // Try sending a ping message
+      print('WebSocket is connected.');
+    } catch (e) {
+      print('WebSocket is not connected: $e');
+    }
+  }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -62,7 +74,7 @@ class _RecordPageState extends ConsumerState<RecordPage> with WidgetsBindingObse
   void dispose() {
     super.dispose();
     // videoFeedTimer.cancel();
-    // cameraController?.stopImageStream();
+    cameraController?.stopImageStream();
     // print("stream stopped");
     cameraController?.dispose();
   }
@@ -90,9 +102,9 @@ class _RecordPageState extends ConsumerState<RecordPage> with WidgetsBindingObse
 
         // return;
         cameraController?.startImageStream((CameraImage availableImage) async {
-          print(counter);
+          // print(counter);
           counter++;
-          print(availableImage.format.group.name);
+          // print(availableImage.format.group.name);
           // imglib.Image? bitmap = imglib.decodeImage(availableImage.planes[0].bytes);
           // final bitmap = imglib.Image.fromBytes(
           //   height: availableImage.height,
@@ -102,8 +114,8 @@ class _RecordPageState extends ConsumerState<RecordPage> with WidgetsBindingObse
           //   order: ChannelOrder.bgra
           // );
           final encodedString = base64Encode(availableImage.planes[0].bytes);
-          print(encodedString);
-          // videoChannel.sink.add(encodedString);
+          // print(encodedString);
+          videoChannel.sink.add(encodedString);
           // if (bitmap != null) {
           //   File("${directory.path}/img.png").writeAsBytesSync(imglib.encodeJpg(bitmap));
           //   // Gal.putImage("${directory.path}/img.png");
@@ -184,6 +196,9 @@ class _RecordPageState extends ConsumerState<RecordPage> with WidgetsBindingObse
             StreamBuilder(
               stream: videoChannel.stream,
               builder: (context, snapshot) {
+                print("hello world");
+                print(videoChannel.closeReason);
+                checkConnection();
                 return Center(
                   child: Text(snapshot.hasData ? '${snapshot.data}' : 'Nada', style: TextStyle(color: Colors.white)),
                 );
@@ -195,28 +210,28 @@ class _RecordPageState extends ConsumerState<RecordPage> with WidgetsBindingObse
             //     videoChannel.sink.add("Hello world");
             //   }
             // )
-            // SizedBox(
-            //   height: 70,
-            //   child: Row(
-            //     children: [
-            //       Expanded(child: Column(
-            //         crossAxisAlignment: CrossAxisAlignment.center,
-            //         children: [
-            //           Text("Bicep Curl", style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold)),
-            //           Text("Current Exercise", style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white))
-            //         ],
-            //       )),
-            //       Container(color: Colors.white, width: 2),
-            //       Expanded(child: Column(
-            //         crossAxisAlignment: CrossAxisAlignment.center,
-            //         children: [
-            //           Text("120", style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold)),
-            //           Text("Pace", style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white))
-            //         ],
-            //       ))
-            //     ],
-            //   )
-            // )
+            SizedBox(
+              height: 70,
+              child: Row(
+                children: [
+                  Expanded(child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text("Bicep Curl", style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold)),
+                      Text("Current Exercise", style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white))
+                    ],
+                  )),
+                  Container(color: Colors.white, width: 2),
+                  Expanded(child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text("120", style: Theme.of(context).textTheme.titleLarge?.copyWith(color: Colors.white, fontWeight: FontWeight.bold)),
+                      Text("Pace", style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: Colors.white))
+                    ],
+                  ))
+                ],
+              )
+            )
           ]
         ),
       )
