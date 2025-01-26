@@ -146,11 +146,13 @@ class HandChronometer:
         self.bpm_ranges = []
         self.normalAction = False
         self.prev_max_time = 0
+        self.BPM_class = 4
+        
         
         
 
     def split_into_ranges(self, n):
-        step = math.ceil(n / 5)
+        step = math.ceil(n / 4)
         return [(i * step + 1, min((i + 1) * step, n)) for i in range(5)]
 
 
@@ -280,6 +282,13 @@ class HandChronometer:
                     diff = 1/propConstant
                     if localMax - diff <= avg_y <= localMax + diff and current_time - self.prev_max_time > 0.7:
                         bpm = 1 / ((current_time - self.prev_max_time)/60)
+                        for i, bounds in enumerate(bpm_ranges):
+                            startBPM, endBPM = bounds
+                            if startBPM < bpm < endBPM:
+                                if i != self.BPM_class:
+                                    playClosestBPM(bpm)
+
+                            
                         print(str(bpm) + ' reps per minute')
                         self.prev_max_time = current_time
 
