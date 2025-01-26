@@ -13,7 +13,7 @@ class WebSocket:
     async def get_frames(self):
         while True:
             if self.ws is None:
-                time.sleep(0.1)  # Wait for the WebSocket connection
+                asyncio.sleep(0.1)  # Wait for the WebSocket connection
                 continue
 
             try:
@@ -26,13 +26,13 @@ class WebSocket:
             frame = cv2.imdecode(img_np, cv2.IMREAD_ANYCOLOR)
             yield frame
 
-    def set_ws(self, websocket):
-        self.ws = websocket
-        print("WebSocket connection established.")
 
     async def start_server(self):
+        async def set_ws(websocket):
+            self.ws = websocket
+            print("WebSocket connection established.")
         print("Starting WebSocket server...")
-        async with websockets.serve(self.set_ws, *self.IP) as server:
+        async with websockets.serve(set_ws, *self.IP) as server:
             print("WebSocket hosting at ws://" + ":".join(map(str, self.IP)))
-            await server.serve_forever()  # Keeps the server running indefinitely
+            await asyncio.Future()  # Keeps the server running indefinitely
 

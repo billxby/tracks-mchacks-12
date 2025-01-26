@@ -108,18 +108,13 @@ class WebSocketClient:
             print(f"Error sending frame: {e}")
 
     async def receive_frames(self):
-        print('penis1')
         if not self.websocket:
             await self.connect()
         
         try:
-            print('penis')
-            async for frame_bytes in self.websocket:
-            #     #print(f"Received message: {message}")
-            # while True:
-            #     frame_bytes = await self.websocket.recv()
-            #     # Convert bytes to numpy array
-                
+            while True:
+                frame_bytes = await self.websocket.recv()
+                # Convert bytes to numpy array
                 np_array = np.frombuffer(frame_bytes, np.uint8)
                 frame = cv2.imdecode(np_array, cv2.IMREAD_COLOR)
                 yield frame
@@ -259,12 +254,8 @@ class HandChronometer:
             await self.ws_client.connect()
             
             current_frame = 0
-            print('hello world!')
-
-            async for message in self.ws_client.receive_frames():
-                np_array = np.frombuffer(message, np.uint8)
-                frame = cv2.imdecode(np_array, cv2.IMREAD_COLOR)
-
+            
+            async for frame in self.ws_client.receive_frames():
                 current_frame += 1
                 this_exercise = self.exercise_list[self.this_exercise_index]
 
@@ -344,7 +335,6 @@ class HandChronometer:
                             self.prev_max_time = current_time
 
                 if pose_landmarks and hand_result.multi_hand_landmarks:
-                    print('bye, world')
                     right_ear = pose_landmarks.landmark[self.mp_pose.PoseLandmark.RIGHT_EAR.value]
                     left_ear = pose_landmarks.landmark[self.mp_pose.PoseLandmark.LEFT_EAR.value]
 
@@ -392,7 +382,7 @@ class WebSocketServer:
     async def handle_client(self, websocket, path=None):
         try:
             async for message in websocket:
-                #print(f"Received message: {message}")
+                print(f"Received message: {message}")
                 await websocket.send("Frame received")
         except Exception as e:
             print(f"WebSocket server error: {e}")
