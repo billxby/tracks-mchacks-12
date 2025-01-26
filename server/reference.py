@@ -1,156 +1,340 @@
 import cv2
 import mediapipe as mp
-import numpy as np
 import time
+import spotipy
+from collections import defaultdict
+import math
+from dotenv import load_dotenv
+import random
+import os
 
-# Initialize MediaPipe Pose
-mp_pose = mp.solutions.pose
-pose = mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5)
-mp_drawing = mp.solutions.drawing_utils
+load_dotenv()
+
+'''
+======================================
+            DEFINITIONS
+======================================
+'''
+
+# Spotify Utils
+SPOTIPY_CLIENT_ID = os.getenv("SPOTIPY_CLIENT_ID")
+SPOTIPY_CLIENT_SECRET = os.getenv("SPOTIPY_CLIENT_SECRET")
+SPOTIPY_REDIRECT_URI = os.getenv("SPOTIPY_REDIRECT_URI")
+
+scopes = ["user-read-playback-state", "user-modify-playback-state", "user-read-private"]
+sp = spotipy.Spotify(auth_manager=spotipy.oauth2.SpotifyOAuth(client_id=SPOTIPY_CLIENT_ID,
+                                                              client_secret=SPOTIPY_CLIENT_SECRET,
+                                                              redirect_uri=SPOTIPY_REDIRECT_URI,
+                                                              scope=scopes))
+def playSong(track_id):
+    device_id = "ade7e71686f3815586d3b61d34772cf14bebd8a4"
+    sp.add_to_queue(f"spotify:track:{track_id}", device_id)
+    sp.next_track(device_id)
+    sp.seek_track(random.randint(0, 30)*1000)
+
+def getSongId(track_name, artist):
+    searchResult = sp.search(f"track:{track_name} artist:{artist}", type="track")
+    # print(searchResult['tracks']['items'][0])
+    return searchResult['tracks']['items'][0]['id']
+
+# API Endpoint Processing
+def processValues(return_values):
+    songs_list = []
+    for value in return_values:
+        if (len(value) < 3):
+            continue
+        # print(value)
+        lower, chunk1 = value[2].split('-')
+        higher, useless = chunk1.split(' ')
+        lower = int(lower)
+        higher = int(higher)
+        avg_bpm = (lower + higher)//2
+
+        songs_list.append([avg_bpm, value[1], value[0]])
+    return sorted(songs_list, key=lambda x: x[0])
+
+def getClosestBPM(target_bpm):
+    closest_song = min(songs_list, key=lambda x: abs(x[0] - target_bpm))
+    return closest_song
+
+def playClosestBPM(target_bpm):
+    closest_song = getClosestBPM(target_bpm)
+    playSong(getSongId(closest_song[1], closest_song[2]))
+
+
+'''
+======================================
+          MAIN LOGIC START
+======================================
+'''
+
+
+# Global Variables 
+gloabl_songs_list = [] # Update Every Time you call processValues()
 
 FACE_WIDTH = 12
-min_pos = float('inf')
-max_pos = float('-inf')
-# Initialize variables
-prev_wrist_y = None
-curl_velocities = []
-max_velocity = 0
-velocity_threshold = 0.1  # Threshold for detecting slowdown
-window_size = 5  # For smoothing velocity readings
-
-# Get screen dimensions
 try:
+    from screeninfo import get_monitors
     screen = get_monitors()[0]
     SCREEN_HEIGHT = screen.height
-except:
-    SCREEN_HEIGHT = 1080  # fallback height if can't detect screen
+except ImportError:
+    SCREEN_HEIGHT = 1080
 
-def calculate_smoothed_velocity(velocities, window_size):
-    if len(velocities) < window_size:
-        return sum(velocities) / len(velocities)
-    return sum(velocities[-window_size:]) / window_size
+class Chronometer:
+    def __init__(self, handchrono):
+        self.total_time = 0.0
+        self.start_time = 0.0
+        self.hc = handchrono
+        self.hc.extrema_tracking['elapsed_time'] = 0.0
+        self.hc.extrema_tracking['active'] = False
 
-# Open video capture
-cap = cv2.VideoCapture(1)
+    def start(self):
+        if not self.hc.extrema_tracking['active']:
+            self.start_time = time.time()
+            self.hc.extrema_tracking['active'] = True
+            print("Chronometer started at:", self.start_time)
 
-# Get original video dimensions
-original_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-original_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-aspect_ratio = original_width / original_height
+    def stop(self):
+        if self.hc.extrema_tracking['active']:
+            self.hc.extrema_tracking['elapsed_time'] = time.time() - self.start_time
+            self.total_time += self.hc.extrema_tracking['elapsed_time']
+            self.hc.extrema_tracking['active'] = False
+            print("Chronometer stopped. Elapsed time:", self.hc.extrema_tracking['elapsed_time'])
 
-# Calculate new dimensions to maximize height while maintaining aspect ratio
-new_height = min(SCREEN_HEIGHT - 100, 1920)  # Leave some margin for taskbar and window chrome
-new_width = int(new_height * aspect_ratio)
+    def reset(self):
+        self.total_time = 0.0
+        self.start_time = 0.0
+        self.hc.extrema_tracking['elapsed_time'] = 0.0
+        self.hc.extrema_tracking['active'] = False
+        print("Chronometer reset.")
 
-# Set window properties
-cv2.namedWindow("Bicep Curl Velocity Tracker", cv2.WINDOW_NORMAL)
-cv2.resizeWindow("Bicep Curl Velocity Tracker", new_width, new_height)
+    @property
+    def time(self):
+        if self.hc.extrema_tracking['active']:
+            return self.total_time + (time.time() - self.start_time)
+        return self.total_time
 
-prev_time = time.time()
+class HandChronometer:
+    def __init__(self):
+        self.mp_hands = mp.solutions.hands
+        self.mp_pose = mp.solutions.pose
+        self.pose = self.mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5)
 
-while cap.isOpened():
-    ret, frame = cap.read()
-    if not ret:
-        break
-
-    # Resize frame to new dimensions
-    frame = cv2.resize(frame, (new_width, new_height))
-    
-    # Flip frame horizontally for mirror effect
-    frame = cv2.flip(frame, 1)
-    rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-    
-    # Process pose
-    results = pose.process(rgb_frame)
-    current_time = time.time()
-    dt = current_time - prev_time
-    fps = 1 / dt
-    prev_time = current_time
-
-    if results.pose_landmarks:
-        mp_drawing.draw_landmarks(frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+        self.mp_drawing = mp.solutions.drawing_utils
+        self.hands = self.mp_hands.Hands(
+            static_image_mode=False, 
+            max_num_hands=2, 
+            min_detection_confidence=0.7, 
+            min_tracking_confidence=0.7
+        )
+        self.last_action_time = 0
+        self.action_cooldown = 2.0
+        self.exercise_list = ["Curl", "Pushup", "Squat", "Lat Raise"]
+        self.this_exercise_index = 0
+        self.start_frame = 0
+        self.stop_frame = 0
         
-        # Get wrist and shoulder landmarks for curl tracking
-        landmarks = results.pose_landmarks.landmark
-        wrist = landmarks[mp_pose.PoseLandmark.LEFT_WRIST.value]
-        shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value]
+        self.extrema_tracking = {
+            'active': False,
+            'elapsed_time': 0,
+            'max_y': float('-inf'),
+            'min_y': float('inf')
+        }
+        self.chronometer = Chronometer(self)
         
-        right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER.value]
-        left_shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER.value]
+        #mid-set related variables
+        self.bpm_ranges = []
+        self.normalAction = False
+        self.prev_max_time = 0
+        self.BPM_class = 4
         
-        right_shoulder_x, right_shoulder_y = right_shoulder.x * new_width, right_shoulder.y * new_height
-        left_shoulder_x, left_shoulder_y = left_shoulder.x * new_width, left_shoulder.y * new_height
         
-        right_ear = landmarks[mp_pose.PoseLandmark.RIGHT_EAR.value]
-        left_ear = landmarks[mp_pose.PoseLandmark.LEFT_EAR.value]
+        
 
-        right_ear_x, right_ear_y = right_ear.x * new_width, right_ear.y * new_height
-        left_ear_x, left_ear_y = left_ear.x * new_width, left_ear.y * new_height
-        
-        propConstant = FACE_WIDTH / (((right_ear_y - left_ear_y) ** 2 + (right_ear_x - left_ear_x) ** 2) ** 0.5)
-        min_pos = min(min_pos, right_shoulder_y * propConstant)
-        max_pos = max(max_pos, right_shoulder_y * propConstant)
+    def split_into_ranges(self, n):
+        step = math.ceil(n / 4)
+        return [(i * step + 1, min((i + 1) * step, n)) for i in range(5)]
 
-        print(min_pos, max_pos)
-        
-        shoulder_width = (((right_shoulder_y - left_shoulder_y) ** 2 + (right_shoulder_x - left_shoulder_x) ** 2) ** 0.5)
-        # Calculate wrist position relative to shoulder
-        wrist_y = (shoulder.y - wrist.y) * frame.shape[0]
-        
-        # Calculate velocity
-        if prev_wrist_y is not None:
-            velocity = abs(wrist_y - prev_wrist_y) / dt
-            curl_velocities.append(velocity)
-            
-            # Calculate smoothed velocity
-            smoothed_velocity = calculate_smoothed_velocity(curl_velocities, window_size)
-            
-            # Update max velocity
-            max_velocity = max(max_velocity, smoothed_velocity)
-            
-            # Scale font and UI elements based on window height
-            font_scale = new_height / 720  # Base scale on 720p reference
-            thickness = max(1, int(font_scale * 2))
-            
-            # Display velocity information with scaled font
-            velocity_text = f"Curl Speed: {smoothed_velocity:.1f} pixels/sec"
-            cv2.putText(frame, velocity_text, (int(30 * font_scale), int(50 * font_scale)), 
-                       cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 0), thickness)
-            
-            cv2.putText(frame, str(propConstant), (int(30 * font_scale), int(250 * font_scale)), 
-                       cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 0), thickness)
-            
-            cv2.putText(frame, str(propConstant * shoulder_width), (int(30 * font_scale), int(300 * font_scale)), 
-                       cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 0), thickness)
-        
-            
-            # Display percentage of max speed
-            if max_velocity > 0:
-                speed_percentage = (smoothed_velocity / max_velocity) * 100
-                percentage_text = f"Percentage of Max Speed: {speed_percentage:.1f}%"
-                cv2.putText(frame, percentage_text, (int(30 * font_scale), int(100 * font_scale)),
-                           cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 255, 0), thickness)
-            
-            # Check for slowdown
-            if smoothed_velocity < velocity_threshold * max_velocity:
-                cv2.putText(frame, "WARNING: Slowing Down!", (int(30 * font_scale), int(150 * font_scale)),
-                           cv2.FONT_HERSHEY_SIMPLEX, font_scale, (0, 0, 255), thickness)
-            
-            # Draw velocity bar (scaled)
-            bar_max_width = int(400 * font_scale)
-            bar_height = int(40 * font_scale)
-            bar_y = int(180 * font_scale)
-            bar_width = int((smoothed_velocity / max_velocity) * bar_max_width) if max_velocity > 0 else 0
-            cv2.rectangle(frame, (30, bar_y), (30 + bar_max_width, bar_y + bar_height), (0, 0, 0), thickness)
-            cv2.rectangle(frame, (30, bar_y), (30 + bar_width, bar_y + bar_height), (0, 255, 0), -1)
 
-        prev_wrist_y = wrist_y
+    def fingers_up(self, hand_landmarks, handedness):
+        tips = [4, 8, 12, 16, 20]
+        count = 0
 
-    # Display frame
-    cv2.imshow("Bicep Curl Velocity Tracker", frame)
+        thumb_threshold = 0.02
+        finger_threshold = 0.02
 
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
+        if handedness == "Right":
+            if hand_landmarks.landmark[tips[0]].x > hand_landmarks.landmark[tips[0] - 1].x + thumb_threshold:
+                count += 1
+        else:
+            if hand_landmarks.landmark[tips[0]].x < hand_landmarks.landmark[tips[0] - 1].x - thumb_threshold:
+                count += 1
 
-cap.release()
-cv2.destroyAllWindows()
+        for tip in tips[1:]:
+            if hand_landmarks.landmark[tip].y < hand_landmarks.landmark[tip - 2].y - finger_threshold:
+                count += 1
+
+        return count
+
+    def process_hand_action(self, finger_count, current_time, current_frame):
+        if current_time - self.last_action_time < self.action_cooldown:
+            return
+
+        FRAME_BUFFER = 20
+
+        if finger_count == 2:  # Two fingers up
+            #if set not started 
+            if not self.extrema_tracking['active'] and current_frame >= self.stop_frame + FRAME_BUFFER:
+                print("Two fingers detected. Activating.")
+                self.chronometer.start()
+                self.extrema_tracking['max_y'] = float('-inf')
+                self.extrema_tracking['min_y'] = float('inf')
+                self.last_action_time = current_time
+                self.start_frame = current_frame
+                self.normalAction = False
+            #if set has already started
+            elif self.chronometer.time >= 4 and current_frame >= self.start_frame + FRAME_BUFFER:
+                self.chronometer.stop()
+                print(f"Exercise {self.exercise_list[self.this_exercise_index]} Extrema:")
+                print(f"Max Y: {self.extrema_tracking['max_y']}")
+                print(f"Min Y: {self.extrema_tracking['min_y']}")
+                self.extrema_tracking['max_y'] = float('-inf')
+                self.extrema_tracking['min_y'] = float('inf')
+                self.last_action_time = current_time
+        elif finger_count == 3:  # Three fingers up
+            self.bpm_ranges = []
+            self.normalAction = False
+            self.prev_max_time = 0
+            self.chronometer.reset()
+            self.this_exercise_index = (self.this_exercise_index + 1) % len(self.exercise_list)
+            self.last_action_time = current_time
+
+    def run(self):
+        cap = cv2.VideoCapture(1)
+        original_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        original_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        aspect_ratio = original_width / original_height
+
+        new_height = min(SCREEN_HEIGHT - 100, 1920)
+        new_width = int(new_height * aspect_ratio)
+
+        current_frame = 0
+        while cap.isOpened():
+            current_frame += 1
+            ret, frame = cap.read()
+            if not ret:
+                break
+            
+            this_exercise = self.exercise_list[self.this_exercise_index]
+
+            frame = cv2.flip(frame, 1)
+            h, w, _ = frame.shape
+            current_time = time.time()
+
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            hand_result = self.hands.process(rgb_frame)
+            pose_result = self.pose.process(rgb_frame)
+
+            pose_landmarks = pose_result.pose_landmarks
+
+            time_text = f"Time: {self.chronometer.time:.2f} sec"
+            cv2.putText(frame, time_text, (10, 50), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+
+            exercise_text = f"Exercise: {self.exercise_list[self.this_exercise_index]}"
+            cv2.putText(frame, exercise_text, (10, 100), 
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+
+            if pose_landmarks and self.extrema_tracking['active']:
+                self.mp_drawing.draw_landmarks(frame, pose_result.pose_landmarks, self.mp_pose.POSE_CONNECTIONS)
+                right_ear = pose_landmarks.landmark[self.mp_pose.PoseLandmark.RIGHT_EAR.value]
+                left_ear = pose_landmarks.landmark[self.mp_pose.PoseLandmark.LEFT_EAR.value]
+
+                right_ear_x, right_ear_y = right_ear.x * new_width, right_ear.y * new_height
+                left_ear_x, left_ear_y = left_ear.x * new_width, left_ear.y * new_height
+                propConstant = FACE_WIDTH / (((right_ear_y - left_ear_y) ** 2 + (right_ear_x - left_ear_x) ** 2) ** 0.5)
+
+                if this_exercise == "Squat" or this_exercise == "Pushup":
+                    right_shoulder = pose_landmarks.landmark[self.mp_pose.PoseLandmark.RIGHT_SHOULDER.value]
+                    left_shoulder = pose_landmarks.landmark[self.mp_pose.PoseLandmark.LEFT_SHOULDER.value]
+
+                    right_y = right_shoulder.y * new_height * propConstant
+                    left_y = left_shoulder.y * new_height * propConstant
+                else:
+                    right_wrist = pose_landmarks.landmark[self.mp_pose.PoseLandmark.RIGHT_WRIST.value]
+                    left_wrist= pose_landmarks.landmark[self.mp_pose.PoseLandmark.LEFT_WRIST.value]
+
+                    right_y = right_wrist.y * new_height * propConstant
+                    left_y = left_wrist.y * new_height * propConstant
+                
+                avg_y = (right_y + left_y) / 2
+                self.extrema_tracking['max_y'] = max(self.extrema_tracking['max_y'], avg_y)
+                self.extrema_tracking['min_y'] = min(self.extrema_tracking['min_y'], avg_y)
+                
+                
+                if current_time - self.chronometer.start_time > 4:
+                    localMax, localMin = self.extrema_tracking["max_y"], self.extrema_tracking["min_y"]
+                    
+                    if not self.bpm_ranges:
+                        bpm_ranges = self.split_into_ranges(80)
+                    
+                    diff = 1/propConstant
+                    if localMax - diff <= avg_y <= localMax + diff and current_time - self.prev_max_time > 0.7:
+                        bpm = 1 / ((current_time - self.prev_max_time)/60)
+                        for i, bounds in enumerate(bpm_ranges):
+                            startBPM, endBPM = bounds
+                            if startBPM < bpm < endBPM:
+                                if i != self.BPM_class:
+                                    playClosestBPM(bpm)
+
+                            
+                        print(str(bpm) + ' reps per minute')
+                        self.prev_max_time = current_time
+
+
+
+            if hand_result.multi_hand_landmarks:
+                right_ear = pose_landmarks.landmark[self.mp_pose.PoseLandmark.RIGHT_EAR.value]
+                left_ear = pose_landmarks.landmark[self.mp_pose.PoseLandmark.LEFT_EAR.value]
+
+                right_ear_x, right_ear_y = right_ear.x * new_width, right_ear.y * new_height
+                left_ear_x, left_ear_y = left_ear.x * new_width, left_ear.y * new_height
+                propConstant = FACE_WIDTH / (((right_ear_y - left_ear_y) ** 2 + (right_ear_x - left_ear_x) ** 2) ** 0.5)
+                
+                left_hip = pose_landmarks.landmark[self.mp_pose.PoseLandmark.LEFT_HIP.value]
+                right_hip = pose_landmarks.landmark[self.mp_pose.PoseLandmark.RIGHT_HIP.value]
+                
+                left_shoulder = pose_landmarks.landmark[self.mp_pose.PoseLandmark.LEFT_SHOULDER.value]
+                right_shoulder = pose_landmarks.landmark[self.mp_pose.PoseLandmark.RIGHT_SHOULDER.value]
+                
+                avg_threshold_y = ((left_hip.y + left_shoulder.y)/2 + (right_hip.y + right_shoulder.y)/2)/2 * new_height * propConstant 
+                for hand_landmarks, hand_handedness in zip(hand_result.multi_hand_landmarks, hand_result.multi_handedness):
+                    wrist_y = hand_landmarks.landmark[0].y * new_height * propConstant
+                    if avg_threshold_y < wrist_y:
+                        continue
+                    
+                    handedness_label = hand_handedness.classification[0].label
+                    finger_count = self.fingers_up(hand_landmarks, handedness_label)
+
+                    self.process_hand_action(finger_count, current_time, current_frame)
+
+                    self.mp_drawing.draw_landmarks(frame, hand_landmarks, self.mp_hands.HAND_CONNECTIONS)
+
+                    x, y = int(hand_landmarks.landmark[0].x * w), int(hand_landmarks.landmark[0].y * h)
+                    cv2.putText(frame, f"{handedness_label}: {finger_count} fingers", (x, y - 10),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+
+            cv2.imshow('Hand Chronometer', frame)
+
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
+        cap.release()
+        cv2.destroyAllWindows()
+
+def main():
+    hand_chrono = HandChronometer()
+    hand_chrono.run()
+
+if __name__ == "__main__":
+    main()
