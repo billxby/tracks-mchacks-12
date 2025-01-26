@@ -7,16 +7,38 @@ import math
 import asyncio
 import random
 import os
-from .websocket import WebSocket
+#from websocket import WebSocket
 
 from dotenv import load_dotenv
 load_dotenv()
+
+# Global Variables 
+global_songs_list = [] # Update Every Time you call processValues()
 
 '''
 ======================================
             DEFINITIONS
 ======================================
 '''
+
+return_values = [
+    ['Here are 20 recent or trending songs across the requested BPM ranges, all in the key of C Major:'],
+    ["Dua Lipa", "Don't Start Now", "80-120 BPM"],
+    ["Ariana Grande", "7 Rings", "120-160 BPM"],
+    ["Ed Sheeran", "Shape of You", "100-120 BPM"],
+    ["Billie Eilish", "Bad Guy", "110-130 BPM"],
+    ["Lizzo", "Good as Hell", "120-140 BPM"],
+    ["Vance Joy", "Riptide", "40-60 BPM"],
+    ["Lewis Capaldi", "Someone You Loved", "60-80 BPM"],
+    ["Lana Del Rey", "Summertime Sadness", "50-70 BPM"],
+    ["Maggie Rogers", "Light On", "60-80 BPM"],
+    ["Shawn Mendes", "In My Blood", "70-90 BPM"],
+    ["The Weeknd", "Blinding Lights", "170-190 BPM"],
+    ["Cardi B", "WAP", "160-180 BPM"],
+    ["Megan Thee Stallion", "Savage", "155-175 BPM"],
+    ["BLACKPINK", "How You Like That", "170-190 BPM"],
+    ["BTS", "Dynamite", "175-195 BPM"]
+]
 
 # Spotify Utils
 SPOTIPY_CLIENT_ID = os.getenv("SPOTIPY_CLIENT_ID")
@@ -56,7 +78,8 @@ def processValues(return_values):
     return sorted(songs_list, key=lambda x: x[0])
 
 def getClosestBPM(target_bpm):
-    closest_song = min(songs_list, key=lambda x: abs(x[0] - target_bpm))
+    
+    closest_song = min(global_songs_list, key=lambda x: abs(x[0] - target_bpm))
     return closest_song
 
 def playClosestBPM(target_bpm):
@@ -70,9 +93,6 @@ def playClosestBPM(target_bpm):
 ======================================
 '''
 
-
-# Global Variables 
-gloabl_songs_list = [] # Update Every Time you call processValues()
 
 FACE_WIDTH = 12
 try:
@@ -143,18 +163,18 @@ class HandChronometer:
             'min_y': float('inf')
         }
         self.chronometer = Chronometer(self)
-        self.ws = WebSocket()
+        #self.ws = WebSocket()
 
         #mid-set related variables
         self.bpm_ranges = []
         self.normalAction = False
         self.prev_max_time = 0
-        self.BPM_class = 4
+        self.BPM_class = None
         
 
     def split_into_ranges(self, n):
         step = math.ceil(n / 4)
-        return [(i * step + 1, min((i + 1) * step, n)) for i in range(5)]
+        return [(i * step + 1, min((i + 1) * step, n)) for i in range(4)]
 
     def fingers_up(self, hand_landmarks, handedness):
         tips = [4, 8, 12, 16, 20]
@@ -209,7 +229,7 @@ class HandChronometer:
             self.this_exercise_index = (self.this_exercise_index + 1) % len(self.exercise_list)
             self.last_action_time = current_time
 
-    async def run(self):
+    def run(self):
         cap = cv2.VideoCapture(1)
         original_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
         original_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -219,9 +239,14 @@ class HandChronometer:
         new_width = int(new_height * aspect_ratio)
 
         current_frame = 0
-        async for frame in self.ws.get_frames():
+        while cap.isOpened():
+            current_frame += 1
             this_exercise = self.exercise_list[self.this_exercise_index]
 
+            ret, frame = cap.read()
+            if not ret:
+                break
+            
             frame = cv2.flip(frame, 1)
             h, w, _ = frame.shape
             current_time = time.time()
@@ -231,6 +256,7 @@ class HandChronometer:
             pose_result = self.pose.process(rgb_frame)
 
             pose_landmarks = pose_result.pose_landmarks
+            
 
             time_text = f"Time: {self.chronometer.time:.2f} sec"
             cv2.putText(frame, time_text, (10, 50), 
@@ -269,27 +295,36 @@ class HandChronometer:
                 
                 if current_time - self.chronometer.start_time > 4:
                     localMax, localMin = self.extrema_tracking["max_y"], self.extrema_tracking["min_y"]
-                    print(localMax)
                     
                     if not self.bpm_ranges:
-                        bpm_ranges = self.split_into_ranges(localMax)
+                        self.bpm_ranges = self.split_into_ranges(80)
+                        print(self.bpm_ranges)
                     
                     diff = 1/propConstant
-                    if localMax - diff <= avg_y <= localMax + diff and current_time - self.prev_max_time > 0.7:
+                    REP_BUFFER = 0.7
+                    if this_exercise == "Pushup":
+                        REP_BUFFER = 1.5
+                    elif this_exercise == "Curl":
+                        REP_BUFFER = 0.7
+                    elif this_exercise == "Lat Raise":
+                        REP_BUFFER = 1
+                    elif this_exercise == "Squat":
+                        REP_BUFFER = 1.5
+                    if localMin - diff <= avg_y <= localMin + diff and current_time - self.prev_max_time > REP_BUFFER:
                         bpm = 1 / ((current_time - self.prev_max_time)/60)
-                        for i, bounds in enumerate(bpm_ranges):
+                        for i, bounds in enumerate(self.bpm_ranges):
                             startBPM, endBPM = bounds
                             if startBPM < bpm < endBPM:
                                 if i != self.BPM_class:
-                                    playClosestBPM(bpm)
+                                    self.BPM_class = i
+                                    print("Previous class :" + str(self.BPM_class) + '; ' + "This class: " + str(i))
+                                    playClosestBPM(bpm * 2.5)
 
                             
                         print(str(bpm) + ' reps per minute')
                         self.prev_max_time = current_time
 
-
-
-            if hand_result.multi_hand_landmarks:
+            if pose_landmarks and hand_result.multi_hand_landmarks:
                 right_ear = pose_landmarks.landmark[self.mp_pose.PoseLandmark.RIGHT_EAR.value]
                 left_ear = pose_landmarks.landmark[self.mp_pose.PoseLandmark.LEFT_EAR.value]
 
@@ -328,11 +363,18 @@ class HandChronometer:
         cap.release()
         cv2.destroyAllWindows()
 
+global_songs_list = processValues(return_values)
+
 def main():
+    global global_songs_list
+    print(global_songs_list, 'penis')
     hand_chrono = HandChronometer()
-    ws = WebSocket()
-    asyncio.run(ws.start_server())
-    asyncio.create_task(hand_chrono.run()) # run this concurrently
+    hand_chrono.run()
+    # ws = WebSocket()
+    # asyncio.get_event_loop().create_task(ws.start_server())
+    # asyncio.get_event_loop().create_task(hand_chrono.run()) # run this concurrently
+    # asyncio.get_event_loop().run_forever()
 
 if __name__ == "__main__":
     main()
+
